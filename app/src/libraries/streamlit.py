@@ -212,13 +212,16 @@ def load_app(orders_table):
         """).to_pandas()
 
         with st.container():
-            st.subheader("top hexagons with sales and locations")
-            st.table(data=df_hex_top_locations)
-            create_hexagon_map(df_hex_top_locations)
+            col1, col2 = st.columns(2,gap='small')
+            with col1:
+                st.subheader("distance from top selling locations")
+                create_point_map(df_location_farther_from_top_point)
+                st.table(data=df_location_farther_from_top_point)
 
-            st.subheader("distance from top selling locations")
-            st.table(data=df_hex_top_locations)
-            create_point_map(df_location_farther_from_top_point)
+            with col2:
+                st.subheader("top hexagons with sales and locations")
+                create_hexagon_map(df_hex_top_locations)
+                st.table(data=df_hex_top_locations)
 
 
 orders_reference_associations = permission.get_reference_associations("order_table")
