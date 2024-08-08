@@ -35,7 +35,6 @@ def create_hexagon_map(df_hex_top_locations):
     df_hex_top_locations['color'] = df_hex_top_locations.index.map(lambda x: get_color(x))
 
     # Underlying Data
-    st.subheader("top hexagons with sales and locations")
     # Create the pydeck H3HexagonLayer
     layer = pdk.Layer(
         'H3HexagonLayer',
@@ -71,16 +70,16 @@ def create_hexagon_map(df_hex_top_locations):
     st.pydeck_chart(r)
 
 
-def create_point_map(df_location_farther_from_top_point):
-    center_point = json.loads(df_location_farther_from_top_point['GEOMETRIC_CENTER_POINT'][0])
+def create_point_map(df):
+    center_point = json.loads(df['GEOMETRIC_CENTER_POINT'][0])
     center_coords = [center_point['coordinates'][0], center_point['coordinates'][1]]
 
-    st.subheader("farthest_points_table Locations - Pydeck")
+    df['KILOMETER_FROM_TOP_SELLING_CENTER_STR'] = df['KILOMETER_FROM_TOP_SELLING_CENTER'].astype(str)
 
     # Scatterplotlayer for the farthest points
     scatter = pdk.Layer(
         "ScatterplotLayer",
-        data=df_location_farther_from_top_point,
+        data=df,
         get_position=["LONGITUDE", "LATITUDE"],
         get_radius=100,
         get_fill_color=[255, 0, 0, 100],
@@ -105,7 +104,7 @@ def create_point_map(df_location_farther_from_top_point):
 
     lines = pdk.Layer(
         "LineLayer",
-        data=df_location_farther_from_top_point,
+        data=df,
         get_source_position=["LONGITUDE", "LATITUDE"],
         get_target_position=center_coords,
         get_color=[160, 50, 40, 128],
@@ -134,6 +133,9 @@ def create_point_map(df_location_farther_from_top_point):
     )
 
     st.pydeck_chart(r)
+
+    # disposals
+    df.drop(columns=['KILOMETER_FROM_TOP_SELLING_CENTER_STR'], inplace=True, axis=1)
 
 
 def load_app(orders_table):
