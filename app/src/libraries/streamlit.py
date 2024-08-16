@@ -71,18 +71,29 @@ def create_hexagon_map(df_hex_top_locations):
     st.pydeck_chart(r)
 
 
-def create_point_map(df):
+def create_point_map(df, point_radius_metric, enable_lines):
     center_point = json.loads(df['GEOMETRIC_CENTER_POINT'][0])
     center_coords = [center_point['coordinates'][0], center_point['coordinates'][1]]
 
     df['KILOMETER_FROM_TOP_SELLING_CENTER_STR'] = df['KILOMETER_FROM_TOP_SELLING_CENTER'].astype(str)
+
+    min_radius = 100
+    max_radius = 300
+
+    # We'll need to repsent points in scatter plot layer based on different metrics presented in the data
+    # so the given metric values should be normalized to a range of min_radius to max_radius
+
+    # Normalizing the values (let's say we are using TOTAL_SALES_USD as the metric)
+    df[point_radius_metric] = df[point_radius_metric].astype(float)
+    df['radius'] = (df[point_radius_metric] - df[point_radius_metric].min()) / (df[point_radius_metric].max() - df[point_radius_metric].min())
+    df['radius'] = df['radius'] * (max_radius - min_radius) + min_radius
 
     # Scatterplotlayer for the farthest points
     scatter = pdk.Layer(
         "ScatterplotLayer",
         data=df,
         get_position=["LONGITUDE", "LATITUDE"],
-        get_radius=100,
+        get_radius="radius",
         get_fill_color=[255, 0, 0, 100],
         pickable=True,
         auto_highlight=True,
@@ -103,6 +114,20 @@ def create_point_map(df):
         get_fill_color="color",
     )
 
+    if enable_lines:
+        # Lines connecting the farthest points to the centera
+        lines = pdk.Layer(
+            "LineLayer",
+            data=df,
+            get_source_position=["LONGITUDE", "LATITUDE"],
+            get_target_position=center_coords,
+            get_color=[160, 50, 40, 128],
+            get_width=2,
+            pickable=True,
+        )
+    else:
+        lines = None
+
     view_state = pdk.ViewState(
         latitude=center_coords[1],
         longitude=center_coords[0],
@@ -111,7 +136,7 @@ def create_point_map(df):
     )
 
     r = pdk.Deck(
-        layers=[circles_scatter, scatter, ],
+        layers=[circles_scatter, scatter, lines, ],
         initial_view_state=view_state,
         map_style="mapbox://styles/mapbox/light-v11",
         tooltip = {
@@ -129,99 +154,152 @@ def create_point_map(df):
     df.drop(columns=['KILOMETER_FROM_TOP_SELLING_CENTER_STR'], inplace=True, axis=1)
 
 
-def load_app(orders_table):
-    with st.spinner("Loading sale locations insights, please wait...."):
-        #  NOTE: Create a view to be used for further queries
-        _ = session.sql(f"""
-            CREATE OR REPLACE VIEW orders_v
-            COMMENT = 'Tasty Bytes Order Detail View'
-            AS
-            SELECT
-                DATE(o.order_ts) AS date,
-                o.*,
-                cpg.* EXCLUDE (location_id, region, phone_number, country)
-            FROM {orders_table} o
-            JOIN frostbyte_tb_safegraph_s cpg ON o.location_id = cpg.location_id;
-        """).collect()
+@st.cache_data
+def create_orders_view(orders_table):
+    return session.sql(f"""
+        CREATE OR REPLACE VIEW orders_v
+        COMMENT = 'Tasty Bytes Order Detail View'
+        AS
+        SELECT
+            DATE(o.order_ts) AS date,
+            o.*,
+            cpg.* EXCLUDE (location_id, region, phone_number, country)
+        FROM {orders_table} o
+        JOIN frostbyte_tb_safegraph_s cpg ON o.location_id = cpg.location_id;
+    """).collect()
 
-        df_locations = session.sql(f"""
-            SELECT DISTINCT
-                country,
-                city,
-            FROM frostbyte_tb_safegraph_s
-        """).to_pandas()
 
-        input_country_selection = st.selectbox("Select a city", df_locations['COUNTRY'].tolist())
-        input_city_selection = st.selectbox("Select a city", df_locations[df_locations['COUNTRY'] == input_country_selection]['CITY'].tolist())
+@st.cache_data
+def load_locations():
+    df_locations = session.sql(f"""
+        SELECT DISTINCT
+            country,
+            city,
+        FROM frostbyte_tb_safegraph_s
+    """).to_pandas()
+    return df_locations
 
-        # Take number of locations as input
-        input_number_of_locations = st.number_input("Enter number of locations", min_value=1, max_value=MAX_NUMBER_OF_LOCATIONS, value=MAX_NUMBER_OF_LOCATIONS)
 
-        df_location_farther_from_top_point = session.sql(f"""
-            WITH _CENTER_POINT AS (
-                WITH _top_10_locations AS (
-                    SELECT TOP 10
-                        o.location_id,
-                        ST_MAKEPOINT(o.longitude, o.latitude) AS geo_point,
-                        SUM(o.price) AS total_sales_usd
-                    FROM ORDERS_V o
-                    WHERE primary_city = '{input_city_selection}'
-                    GROUP BY o.location_id, o.latitude, o.longitude
-                    ORDER BY total_sales_usd DESC
-                )
-                SELECT
-                    ST_COLLECT(tl.geo_point) AS collect_points,
-                    ST_CENTROID(collect_points) AS geometric_center_point
-                FROM _top_10_locations tl
-            ), _paris_locations AS (
-                SELECT DISTINCT
-                    location_id,
-                    location_name,
-                    ST_MAKEPOINT(longitude, latitude) AS geo_point,
-                    latitude,
-                    longitude
-                FROM ORDERS_V
+@st.cache_data
+def load_farthest_locations(input_city_selection, input_number_of_locations):
+    return session.sql(f"""
+        WITH _CENTER_POINT AS (
+            WITH _top_10_locations AS (
+                SELECT TOP 10
+                    o.location_id,
+                    ST_MAKEPOINT(o.longitude, o.latitude) AS geo_point,
+                    SUM(o.price) AS total_sales_usd
+                FROM ORDERS_V o
                 WHERE primary_city = '{input_city_selection}'
-            )
-            SELECT TOP {input_number_of_locations}
-                location_id,
-                location_name,
-                ROUND(ST_DISTANCE(geo_point, TO_GEOGRAPHY(_CENTER_POINT.geometric_center_point))/1000,2) AS kilometer_from_top_selling_center,
-                longitude,
-                latitude,
-                _CENTER_POINT.geometric_center_point
-            FROM _paris_locations,_CENTER_POINT
-            ORDER BY kilometer_from_top_selling_center DESC"""
-        ).to_pandas()
-
-        df_hex_top_locations = session.sql(f"""
-            WITH _top_50_locations AS (
-                SELECT TOP {input_number_of_locations}
-                    location_id,
-                    ARRAY_SIZE(ARRAY_UNIQUE_AGG(customer_id)) AS customer_loyalty_visitor_count,
-                    H3_LATLNG_TO_CELL(latitude, longitude, 7) AS h3_integer_resolution_6,
-                    H3_LATLNG_TO_CELL_STRING(latitude, longitude, 7) AS h3_hex_resolution_6,
-                    SUM(price) AS total_sales_usd
-                FROM orders_v
-                WHERE primary_city = '{input_city_selection}'
-                GROUP BY ALL
+                GROUP BY o.location_id, o.latitude, o.longitude
                 ORDER BY total_sales_usd DESC
             )
             SELECT
-                h3_hex_resolution_6,
-                COUNT(DISTINCT location_id) AS number_of_top_50_locations,
-                SUM(customer_loyalty_visitor_count) AS customer_loyalty_visitor_count,
-                SUM(total_sales_usd) AS total_sales_usd
-            FROM _top_50_locations
+                ST_COLLECT(tl.geo_point) AS collect_points,
+                ST_CENTROID(collect_points) AS geometric_center_point
+            FROM _top_10_locations tl
+        ), _paris_locations AS (
+            SELECT DISTINCT
+                location_id,
+                location_name,
+                ST_MAKEPOINT(longitude, latitude) AS geo_point,
+                latitude,
+                longitude,
+                SUM(price) AS total_sales_usd,
+                ARRAY_SIZE(ARRAY_UNIQUE_AGG(customer_id)) AS customer_loyalty_visitor_count
+            FROM ORDERS_V
+            WHERE primary_city = '{input_city_selection}'
+            GROUP BY location_id, location_name, latitude, longitude
+        )
+        SELECT TOP {input_number_of_locations}
+            location_id,
+            location_name,
+            ROUND(ST_DISTANCE(geo_point, TO_GEOGRAPHY(_CENTER_POINT.geometric_center_point))/1000,2) AS kilometer_from_top_selling_center,
+            longitude,
+            latitude,
+            _CENTER_POINT.geometric_center_point,
+            total_sales_usd,
+            customer_loyalty_visitor_count
+        FROM _paris_locations,_CENTER_POINT
+        ORDER BY kilometer_from_top_selling_center DESC"""
+    ).to_pandas()
+
+
+@st.cache_data
+def load_hex_top_locations(input_city_selection, input_number_of_locations):
+    return session.sql(f"""
+        WITH _top_50_locations AS (
+            SELECT TOP {input_number_of_locations}
+                location_id,
+                ARRAY_SIZE(ARRAY_UNIQUE_AGG(customer_id)) AS customer_loyalty_visitor_count,
+                H3_LATLNG_TO_CELL(latitude, longitude, 7) AS h3_integer_resolution_6,
+                H3_LATLNG_TO_CELL_STRING(latitude, longitude, 7) AS h3_hex_resolution_6,
+                SUM(price) AS total_sales_usd
+            FROM orders_v
+            WHERE primary_city = '{input_city_selection}'
             GROUP BY ALL
             ORDER BY total_sales_usd DESC
-        """).to_pandas()
+        )
+        SELECT
+            h3_hex_resolution_6,
+            COUNT(DISTINCT location_id) AS number_of_top_50_locations,
+            SUM(customer_loyalty_visitor_count) AS customer_loyalty_visitor_count,
+            SUM(total_sales_usd) AS total_sales_usd
+        FROM _top_50_locations
+        GROUP BY ALL
+        ORDER BY total_sales_usd DESC
+    """).to_pandas()
+
+
+def load_app(orders_table):
+    with st.spinner("Loading sale locations insights, please wait...."):
+        #  NOTE: Create a view to be used for further queries
+        _ = create_orders_view(orders_table)
+
+        df_locations = load_locations()
+
+        input_country_selection = st.selectbox(
+            "Select a country",
+            sorted(df_locations['COUNTRY'].unique().tolist()),
+        )
+
+        if not input_country_selection:
+            st.warning("Please select a country")
+            return
+
+        input_city_selection = st.selectbox(
+            "Select a city",
+            df_locations[df_locations['COUNTRY'] == input_country_selection]['CITY'].unique().tolist(),
+        )
+
+        if not input_city_selection:
+            st.warning("Please select a city")
+            return
+
+        input_number_of_locations = st.number_input("Enter number of locations", min_value=1, max_value=MAX_NUMBER_OF_LOCATIONS, value=MAX_NUMBER_OF_LOCATIONS)
+
+        if not input_number_of_locations:
+            st.warning("Please enter a number of locations")
+            return
+
+        if input_number_of_locations > MAX_NUMBER_OF_LOCATIONS:
+            st.warning(f"Please enter a number of locations less than or equal to {MAX_NUMBER_OF_LOCATIONS}")
+            return
+
+        if input_number_of_locations < 1:
+            st.warning("Please enter a number of locations greater than 0")
+            return
+
+        df_location_farther_from_top_point = load_farthest_locations(input_city_selection, input_number_of_locations)
+        df_hex_top_locations = load_hex_top_locations(input_city_selection, input_number_of_locations)
 
         with st.container():
             col1, col2 = st.columns(2,gap='small')
             with col1:
                 st.subheader("distance from top selling locations")
-                create_point_map(df_location_farther_from_top_point)
+                input_enable_lines = st.checkbox("Enable lines", value=True)
+                input_point_radius_metric = st.selectbox("Select a metric", ['TOTAL_SALES_USD', 'CUSTOMER_LOYALTY_VISITOR_COUNT'])
+                create_point_map(df_location_farther_from_top_point, input_point_radius_metric, input_enable_lines)
                 st.table(data=df_location_farther_from_top_point)
 
             with col2:
