@@ -153,6 +153,16 @@ def load_app(orders_table):
             JOIN frostbyte_tb_safegraph_s cpg ON o.location_id = cpg.location_id;
         """).collect()
 
+        df_locations = session.sql(f"""
+            SELECT DISTINCT
+                country,
+                city,
+            FROM frostbyte_tb_safegraph_s
+        """).to_pandas()
+
+        input_country_selection = st.selectbox("Select a city", df_locations['COUNTRY'].tolist())
+        input_city_selection = st.selectbox("Select a city", df_locations[df_locations['COUNTRY'] == input_country_selection]['CITY'].tolist())
+
         df_location_farther_from_top_point = session.sql(f"""
             WITH _CENTER_POINT AS (
                 WITH _top_10_locations AS (
@@ -161,7 +171,7 @@ def load_app(orders_table):
                         ST_MAKEPOINT(o.longitude, o.latitude) AS geo_point,
                         SUM(o.price) AS total_sales_usd
                         FROM ORDERS_V o
-                    WHERE primary_city = 'Paris'
+                    WHERE primary_city = '{input_city_selection}'
                     GROUP BY o.location_id, o.latitude, o.longitude
                     ORDER BY total_sales_usd DESC
                 )
@@ -177,7 +187,7 @@ def load_app(orders_table):
                     latitude,
                     longitude
                 FROM ORDERS_V
-                WHERE primary_city = 'Paris'
+                WHERE primary_city = '{input_city_selection}'
             )
             SELECT TOP 50
                 location_id,
@@ -199,7 +209,7 @@ def load_app(orders_table):
                     H3_LATLNG_TO_CELL_STRING(latitude, longitude, 7) AS h3_hex_resolution_6,
                     SUM(price) AS total_sales_usd
                 FROM orders_v
-                WHERE primary_city = 'Paris'
+                WHERE primary_city = '{input_city_selection}'
                 GROUP BY ALL
                 ORDER BY total_sales_usd DESC
             )
