@@ -161,14 +161,14 @@ def load_app(orders_table):
                         ST_MAKEPOINT(o.longitude, o.latitude) AS geo_point,
                         SUM(o.price) AS total_sales_usd
                         FROM ORDERS_V o
-                        WHERE primary_city = 'Paris'
-                        GROUP BY o.location_id, o.latitude, o.longitude
-                        ORDER BY total_sales_usd DESC
+                    WHERE primary_city = 'Paris'
+                    GROUP BY o.location_id, o.latitude, o.longitude
+                    ORDER BY total_sales_usd DESC
                 )
                 SELECT
                     ST_COLLECT(tl.geo_point) AS collect_points,
                     ST_CENTROID(collect_points) AS geometric_center_point
-                    FROM _top_10_locations tl
+                FROM _top_10_locations tl
             ), _paris_locations AS (
                 SELECT DISTINCT
                     location_id,
@@ -176,8 +176,8 @@ def load_app(orders_table):
                     ST_MAKEPOINT(longitude, latitude) AS geo_point,
                     latitude,
                     longitude
-                    FROM ORDERS_V
-                    WHERE primary_city = 'Paris'
+                FROM ORDERS_V
+                WHERE primary_city = 'Paris'
             )
             SELECT TOP 50
                 location_id,
@@ -198,19 +198,19 @@ def load_app(orders_table):
                     H3_LATLNG_TO_CELL(latitude, longitude, 7) AS h3_integer_resolution_6,
                     H3_LATLNG_TO_CELL_STRING(latitude, longitude, 7) AS h3_hex_resolution_6,
                     SUM(price) AS total_sales_usd
-                    FROM orders_v
-                    WHERE primary_city = 'Paris'
-                    GROUP BY ALL
-                    ORDER BY total_sales_usd DESC
+                FROM orders_v
+                WHERE primary_city = 'Paris'
+                GROUP BY ALL
+                ORDER BY total_sales_usd DESC
             )
             SELECT
                 h3_hex_resolution_6,
                 COUNT(DISTINCT location_id) AS number_of_top_50_locations,
                 SUM(customer_loyalty_visitor_count) AS customer_loyalty_visitor_count,
                 SUM(total_sales_usd) AS total_sales_usd
-                FROM _top_50_locations
-                GROUP BY ALL
-                ORDER BY total_sales_usd DESC
+            FROM _top_50_locations
+            GROUP BY ALL
+            ORDER BY total_sales_usd DESC
         """).to_pandas()
 
         with st.container():
