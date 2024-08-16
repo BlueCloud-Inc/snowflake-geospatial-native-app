@@ -2,9 +2,7 @@ import json
 from sys import exit
 
 import streamlit as st
-import pandas as pd
 from snowflake.snowpark.context import get_active_session
-from snowflake.snowpark.functions import count_distinct,col,sum
 import snowflake.permissions as permission
 import pydeck as pdk
 import h3
