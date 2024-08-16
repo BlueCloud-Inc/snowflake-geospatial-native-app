@@ -105,16 +105,6 @@ def create_point_map(df):
         get_fill_color="color",
     )
 
-    lines = pdk.Layer(
-        "LineLayer",
-        data=df,
-        get_source_position=["LONGITUDE", "LATITUDE"],
-        get_target_position=center_coords,
-        get_color=[160, 50, 40, 128],
-        get_width=2,
-        pickable=True,
-    )
-
     view_state = pdk.ViewState(
         latitude=center_coords[1],
         longitude=center_coords[0],
@@ -123,7 +113,7 @@ def create_point_map(df):
     )
 
     r = pdk.Deck(
-        layers=[circles_scatter, scatter, lines, ],
+        layers=[circles_scatter, scatter, ],
         initial_view_state=view_state,
         map_style="mapbox://styles/mapbox/light-v11",
         tooltip = {
