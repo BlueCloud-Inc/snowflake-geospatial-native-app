@@ -164,7 +164,7 @@ def load_app(orders_table):
                         o.location_id,
                         ST_MAKEPOINT(o.longitude, o.latitude) AS geo_point,
                         SUM(o.price) AS total_sales_usd
-                        FROM ORDERS_V o
+                    FROM ORDERS_V o
                     WHERE primary_city = '{input_city_selection}'
                     GROUP BY o.location_id, o.latitude, o.longitude
                     ORDER BY total_sales_usd DESC
