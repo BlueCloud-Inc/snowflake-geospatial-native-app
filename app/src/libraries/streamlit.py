@@ -13,6 +13,9 @@ st.set_page_config(layout="wide")
 session = get_active_session()
 
 
+MAX_NUMBER_OF_LOCATIONS = 50
+
+
 def create_hexagon_map(df_hex_top_locations):
     df_hex_top_locations['latitude'] = df_hex_top_locations['H3_HEX_RESOLUTION_6'].apply(lambda x: h3.h3_to_geo(x)[0])
     df_hex_top_locations['longitude'] = df_hex_top_locations['H3_HEX_RESOLUTION_6'].apply(lambda x: h3.h3_to_geo(x)[1])
@@ -163,10 +166,13 @@ def load_app(orders_table):
         input_country_selection = st.selectbox("Select a city", df_locations['COUNTRY'].tolist())
         input_city_selection = st.selectbox("Select a city", df_locations[df_locations['COUNTRY'] == input_country_selection]['CITY'].tolist())
 
+        # Take number of locations as input
+        input_number_of_locations = st.number_input("Enter number of locations", min_value=1, max_value=MAX_NUMBER_OF_LOCATIONS, value=MAX_NUMBER_OF_LOCATIONS)
+
         df_location_farther_from_top_point = session.sql(f"""
             WITH _CENTER_POINT AS (
                 WITH _top_10_locations AS (
-                    SELECT TOP 10
+                    SELECT TOP {input_number_of_locations}
                         o.location_id,
                         ST_MAKEPOINT(o.longitude, o.latitude) AS geo_point,
                         SUM(o.price) AS total_sales_usd
@@ -189,7 +195,7 @@ def load_app(orders_table):
                 FROM ORDERS_V
                 WHERE primary_city = '{input_city_selection}'
             )
-            SELECT TOP 50
+            SELECT TOP {input_number_of_locations}
                 location_id,
                 location_name,
                 ROUND(ST_DISTANCE(geo_point, TO_GEOGRAPHY(_CENTER_POINT.geometric_center_point))/1000,2) AS kilometer_from_top_selling_center,
@@ -202,7 +208,7 @@ def load_app(orders_table):
 
         df_hex_top_locations = session.sql(f"""
             WITH _top_50_locations AS (
-                SELECT TOP 50
+                SELECT TOP {input_number_of_locations}
                     location_id,
                     ARRAY_SIZE(ARRAY_UNIQUE_AGG(customer_id)) AS customer_loyalty_visitor_count,
                     H3_LATLNG_TO_CELL(latitude, longitude, 7) AS h3_integer_resolution_6,
