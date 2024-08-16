@@ -160,7 +160,7 @@ def load_app(orders_table):
         df_location_farther_from_top_point = session.sql(f"""
             WITH _CENTER_POINT AS (
                 WITH _top_10_locations AS (
-                    SELECT TOP {input_number_of_locations}
+                    SELECT TOP 10
                         o.location_id,
                         ST_MAKEPOINT(o.longitude, o.latitude) AS geo_point,
                         SUM(o.price) AS total_sales_usd
