@@ -77,7 +77,7 @@ def create_point_map(df, point_radius_metric, enable_lines):
 
     df['KILOMETER_FROM_TOP_SELLING_CENTER_STR'] = df['KILOMETER_FROM_TOP_SELLING_CENTER'].astype(str)
 
-    min_radius = 100
+    min_radius = 75
     max_radius = 300
 
     # We'll need to repsent points in scatter plot layer based on different metrics presented in the data
@@ -100,10 +100,15 @@ def create_point_map(df, point_radius_metric, enable_lines):
     )
 
     # Scatterplotlayer for the center point: displaying bigger circles at the center point for levels of 1, 2, 3 closeness
+    # 1 radius is approx 1 meters so we can use KILOMETER_FROM_TOP_SELLING_CENTER to represent the radius by multiplying it with 1000
+    min_distance_meters = df['KILOMETER_FROM_TOP_SELLING_CENTER'].min() * 1000
+    mean_distance_meters = df['KILOMETER_FROM_TOP_SELLING_CENTER'].mean() * 1000
+    max_distance_meters = df['KILOMETER_FROM_TOP_SELLING_CENTER'].max() * 1000
+
     circles_data = [
-        {"position": center_coords, "radius": 16000, "color": [255, 50,  50, 40]},
-        {"position": center_coords, "radius": 8000,  "color": [255, 255, 50, 40]},
-        {"position": center_coords, "radius": 4000,  "color": [50,  255, 50, 40]},
+        {"position": center_coords, "radius": max_distance_meters, "color": [255, 50,  50, 40]},
+        {"position": center_coords, "radius": mean_distance_meters,  "color": [255, 255, 50, 40]},
+        {"position": center_coords, "radius": min_distance_meters,  "color": [50,  255, 50, 40]},
     ]
 
     circles_scatter = pdk.Layer(
