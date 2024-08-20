@@ -14,26 +14,49 @@ session = get_active_session()
 MAX_NUMBER_OF_LOCATIONS = 50
 
 
-def create_hexagon_map(df_hex_top_locations):
+def create_hexagon_map(df_hex_top_locations, input_elevation_metric, input_color_division):
     df_hex_top_locations['latitude'] = df_hex_top_locations['H3_HEX_RESOLUTION_6'].apply(lambda x: h3.h3_to_geo(x)[0])
     df_hex_top_locations['longitude'] = df_hex_top_locations['H3_HEX_RESOLUTION_6'].apply(lambda x: h3.h3_to_geo(x)[1])
 
     n = len(df_hex_top_locations)
 
     # Calculate threshold indices for N/3 groups
-    top_threshold = n // 3
-    middle_threshold = 2 * (n // 3)
+    # Determine thresholds based on the color division, divide index into "color_division" groups
 
-    # Function to determine the color based on TOTAL_SALES_USD rank
+    number_of_locations_in_each_group = n // input_color_division
+    thresholds = []
+    next_threshold = number_of_locations_in_each_group
+    while True:
+        if next_threshold >= n:
+            thresholds.append(n - 1)
+            break
+        thresholds.append(next_threshold)
+        next_threshold += number_of_locations_in_each_group
+
+    base_red = 0
+    base_green = 40
+    base_blue = 120
+    base_alpha = 160
+    increment_red = 15
+    increment_green = 30
+    increment_blue = 20
+
     def get_color(index):
-        if index < top_threshold:
-            return [0, 144, 189, 160]    # Dark Green
-        elif index < middle_threshold:
-            return [0, 191, 255, 160]  # deep sky blue
-        else:
-            return [135, 206, 250, 160] # light sky blue
+        for i, threshold in enumerate(thresholds):
+            if index <= threshold:
+                new_red = min(base_red + increment_red * i, 255)
+                new_green = min(base_green + increment_green * i, 255)
+                new_blue = min(base_blue + increment_blue * i, 255)
+                return [new_red, new_green, new_blue, base_alpha]
 
     df_hex_top_locations['color'] = df_hex_top_locations.index.map(lambda x: get_color(x))
+
+    if input_elevation_metric == 'TOTAL_SALES_USD':
+        elevatopn_factor = 0.0001
+    elif input_elevation_metric == 'CUSTOMER_LOYALTY_VISITOR_COUNT':
+        elevatopn_factor = 0.1
+    else:
+        elevatopn_factor = 1
 
     # Underlying Data
     # Create the pydeck H3HexagonLayer
@@ -42,7 +65,7 @@ def create_hexagon_map(df_hex_top_locations):
         df_hex_top_locations,
         get_hexagon='H3_HEX_RESOLUTION_6',
         get_fill_color='color',
-        get_elevation='TOTAL_SALES_USD * 0.0001',
+        get_elevation=f'{input_elevation_metric} * {elevatopn_factor}',
         elevation_scale=1,
         extruded=True,
         pickable=True,
@@ -69,6 +92,9 @@ def create_hexagon_map(df_hex_top_locations):
         },
     )
     st.pydeck_chart(r)
+
+    # disposals
+    df_hex_top_locations.drop(columns=['color'], inplace=True, axis=1)
 
 
 def create_point_map(df, point_radius_metric, enable_lines):
@@ -157,6 +183,7 @@ def create_point_map(df, point_radius_metric, enable_lines):
 
     # disposals
     df.drop(columns=['KILOMETER_FROM_TOP_SELLING_CENTER_STR'], inplace=True, axis=1)
+    df.drop(columns=['radius'], inplace=True, axis=1)
 
 
 @st.cache_data
@@ -303,13 +330,18 @@ def load_app(orders_table):
             with col1:
                 st.subheader("distance from top selling locations")
                 input_enable_lines = st.checkbox("Enable lines", value=True)
-                input_point_radius_metric = st.selectbox("Select a metric", ['TOTAL_SALES_USD', 'CUSTOMER_LOYALTY_VISITOR_COUNT'])
+                st.text(" ")
+                st.text(" ")
+                st.text(" ")
+                input_point_radius_metric = st.selectbox("Select point radius metric", ['TOTAL_SALES_USD', 'CUSTOMER_LOYALTY_VISITOR_COUNT'])
                 create_point_map(df_location_farther_from_top_point, input_point_radius_metric, input_enable_lines)
                 st.table(data=df_location_farther_from_top_point)
 
             with col2:
                 st.subheader("top hexagons with sales and locations")
-                create_hexagon_map(df_hex_top_locations)
+                input_color_division = st.number_input("Enter color division", min_value=3, max_value=6, value=3)
+                input_elevation_metric = st.selectbox("Select elevation metric", ['TOTAL_SALES_USD', 'CUSTOMER_LOYALTY_VISITOR_COUNT'])
+                create_hexagon_map(df_hex_top_locations, input_elevation_metric, input_color_division)
                 st.table(data=df_hex_top_locations)
 
 
