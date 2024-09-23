@@ -328,7 +328,7 @@ def load_app(orders_table):
         with st.container():
             col1, col2 = st.columns(2,gap='small')
             with col1:
-                st.subheader("distance from top selling locations")
+                st.subheader("Locations Furthest Away from Top Selling Center Point")
                 input_enable_lines = st.checkbox("Enable lines", value=True)
                 st.text(" ")
                 st.text(" ")
@@ -338,7 +338,7 @@ def load_app(orders_table):
                 st.table(data=df_location_farther_from_top_point)
 
             with col2:
-                st.subheader("top hexagons with sales and locations")
+                st.subheader("Top H3 Hexagons based on Sales")
                 input_color_division = st.number_input("Enter color division", min_value=3, max_value=6, value=3)
                 input_elevation_metric = st.selectbox("Select elevation metric", ['TOTAL_SALES_USD', 'CUSTOMER_LOYALTY_VISITOR_COUNT'])
                 create_hexagon_map(df_hex_top_locations, input_elevation_metric, input_color_division)
@@ -351,6 +351,8 @@ if len(orders_reference_associations) == 0:
     exit(0)
 
 
-st.title("Sale location insights")
+st.title("Geospatial Insights on Sales Performance by Location")
+st.write("This application provides powerful geospatial visualizations using Snowflake built-in geospatial functions and streamlit. Choose Country and City of interest and select required parameters to customize visuals.")
+st.divider()
 orders_table = "reference('order_table')"
 load_app(orders_table)
